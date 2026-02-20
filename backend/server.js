@@ -9,9 +9,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from the public folder inside backend
+// Serve static files from the frontend folder
 const path = require('path');
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, '../frontend')));
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -25,10 +25,14 @@ const PORT = process.env.PORT || 3000;
 
 // API: Register User
 app.post('/register', async (req, res) => {
+    // Log request body for debugging
+    console.log('Register request body:', req.body);
+
     const { rollno, name, email } = req.body;
 
     // Validation
     if (!rollno || !/^[a-zA-Z0-9]+$/.test(rollno)) {
+        console.log('Validation failed: Invalid Roll Number');
         return res.status(400).json({ success: false, message: 'Invalid Roll Number' });
     }
 
@@ -39,6 +43,7 @@ app.post('/register', async (req, res) => {
             .select();
 
         if (error) {
+            console.error('Supabase error:', error);
             if (error.code === '23505') { // Unique violation
                 return res.status(400).json({ success: false, message: 'Roll Number already exists' });
             }
@@ -46,8 +51,8 @@ app.post('/register', async (req, res) => {
         }
         res.status(201).json({ success: true, user: data[0] });
     } catch (error) {
-        console.error('Register error:', error);
-        res.status(400).json({ success: false, message: error.message });
+        console.error('Register internal error:', error);
+        res.status(500).json({ success: false, message: 'Internal Server Error: ' + error.message });
     }
 });
 

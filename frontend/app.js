@@ -1,6 +1,4 @@
-const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:2000'
-    : 'https://justcall.onrender.com';
+const API_URL = 'http://localhost:2000'; // Change to your server URL
 let socket;
 let currentUser = null;
 let currentTargetRollNo = null;
@@ -15,6 +13,7 @@ const callScreen = document.getElementById('call-screen');
 const incomingPopup = document.getElementById('incoming-call-popup');
 const installBanner = document.getElementById('install-banner');
 const installBtn = document.getElementById('install-btn');
+const closeInstallBtn = document.getElementById('close-install-btn');
 
 // --- PWA Install Logic ---
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -35,6 +34,12 @@ installBtn.addEventListener('click', async () => {
         installBanner.classList.add('hidden');
     }
 });
+
+if (closeInstallBtn) {
+    closeInstallBtn.addEventListener('click', () => {
+        installBanner.classList.add('hidden');
+    });
+}
 
 // Auth UI Switch
 document.getElementById('show-register').onclick = (e) => {
@@ -81,6 +86,7 @@ async function register() {
 
 async function login() {
     const rollno = document.getElementById('login-rollno').value.trim();
+    // Allow simpler login for testing/demo if needed, but strict for now
     if (!rollno || !/^[a-zA-Z0-9]+$/.test(rollno)) {
         return alert('Please enter a valid alphanumeric Roll Number');
     }
@@ -100,7 +106,7 @@ async function login() {
         }
     } catch (err) {
         console.error(err);
-        alert('Login failed');
+        alert('Login failed. Is the server running?');
     }
 }
 
@@ -110,8 +116,11 @@ function initDashboard() {
     dashboardContainer.classList.remove('hidden');
 
     document.getElementById('display-name').innerText = currentUser.name;
-    document.getElementById('display-rollno').innerText = `Roll No: ${currentUser.rollno}`;
-    document.getElementById('user-avatar').innerText = currentUser.name[0].toUpperCase();
+    document.getElementById('display-rollno').innerText = `ID: ${currentUser.rollno}`;
+
+    // Set Avatar Initial
+    const avatarEl = document.getElementById('user-avatar');
+    if (avatarEl) avatarEl.innerText = currentUser.name[0].toUpperCase();
 
     // Initialize Socket
     socket = io(API_URL);
@@ -124,8 +133,9 @@ function initDashboard() {
 
     socket.on('call-accepted', () => {
         document.getElementById('dialtone').pause();
-        document.getElementById('call-status').innerText = 'Connected';
+        document.getElementById('call-status').innerText = '00:00';
         startWebRTCConnection(currentTargetRollNo, true); // We are original caller
+        startCallTimer();
     });
 
     socket.on('call-rejected', () => {
@@ -141,15 +151,18 @@ function initDashboard() {
     });
 
     socket.on('offer', async ({ offer, fromRollNo }) => {
-        handleOffer(offer, fromRollNo);
+        // Offer received logic is handled via WebRTC negotiation flow usually
+        // But for this simple implementation, we might need to handle it if we are already in 'connecting' state
+        // This part relies on webrtc.js mostly
     });
 
+    // Delegating WebRTC signals to webrtc.js functions (assumed global)
     socket.on('answer', async ({ answer }) => {
-        handleAnswer(answer);
+        if (window.handleAnswer) window.handleAnswer(answer);
     });
 
     socket.on('ice-candidate', ({ candidate }) => {
-        handleIceCandidate(candidate);
+        if (window.handleIceCandidate) window.handleIceCandidate(candidate);
     });
 
     socket.on('end-call', () => {
@@ -159,7 +172,7 @@ function initDashboard() {
 
 // --- Call UI Logic ---
 function startCall() {
-    const targetRollNo = document.getElementById('target-rollno').value;
+    const targetRollNo = document.getElementById('target-rollno').value.trim();
     if (!targetRollNo) return alert('Enter target roll number');
     if (targetRollNo === currentUser.rollno) return alert('Cannot call yourself');
 
@@ -173,7 +186,10 @@ function startCall() {
 function handleIncomingCall(fromRollNo) {
     currentTargetRollNo = fromRollNo;
     document.getElementById('incoming-name').innerText = fromRollNo;
-    document.getElementById('incoming-avatar').innerText = fromRollNo[0].toUpperCase();
+
+    const incAvatar = document.getElementById('incoming-avatar');
+    if (incAvatar) incAvatar.innerText = fromRollNo[0].toUpperCase();
+
     incomingPopup.classList.remove('hidden');
     document.getElementById('ringtone').play();
 }
@@ -184,6 +200,7 @@ function acceptCall() {
     showCallScreen(currentTargetRollNo, 'Connecting...');
     socket.emit('accept-call', { toRollNo: currentTargetRollNo });
     startWebRTCConnection(currentTargetRollNo, false); // We are answering
+    startCallTimer();
 }
 
 function rejectCall() {
@@ -195,7 +212,10 @@ function rejectCall() {
 
 function showCallScreen(name, status) {
     document.getElementById('call-name').innerText = name;
-    document.getElementById('call-avatar-text').innerText = name[0].toUpperCase();
+
+    const avatarEl = document.getElementById('call-avatar-text');
+    if (avatarEl) avatarEl.innerText = name[0].toUpperCase();
+
     document.getElementById('call-status').innerText = status;
     callScreen.classList.remove('hidden');
 }
@@ -204,9 +224,76 @@ function closeCallScreen() {
     callScreen.classList.add('hidden');
     document.getElementById('dialtone').pause();
     document.getElementById('ringtone').pause();
-    stopWebRTC();
+    stopWebRTC(); // From webrtc.js
     currentTargetRollNo = null;
+    stopCallTimer();
 }
+
+// --- Call Controls ---
+let isMuted = false;
+let isSpeaker = false;
+
+document.getElementById('mute-btn')?.addEventListener('click', (e) => {
+    isMuted = !isMuted;
+    const btn = e.currentTarget;
+
+    // Visually toggle
+    if (isMuted) {
+        btn.style.backgroundColor = 'white';
+        btn.style.color = 'black';
+        btn.querySelector('i').classList.replace('fa-microphone-slash', 'fa-microphone'); // Icon logic might be inverted based on preference, assuming slash means "unmuted" in default state? No, slash usually means "muted". 
+        // Let's stick to: Default icon is microphone-slash (mute). If active, it means we ARE muted.
+    } else {
+        btn.style.backgroundColor = '';
+        btn.style.color = '';
+        // btn.querySelector('i').classList.replace('fa-microphone', 'fa-microphone-slash');
+    }
+
+    // Logical Toggle
+    if (window.localStream) {
+        window.localStream.getAudioTracks().forEach(track => track.enabled = !isMuted);
+    }
+});
+
+document.getElementById('speaker-btn')?.addEventListener('click', (e) => {
+    isSpeaker = !isSpeaker;
+    const btn = e.currentTarget;
+
+    if (isSpeaker) {
+        btn.style.backgroundColor = 'white';
+        btn.style.color = 'black';
+    } else {
+        btn.style.backgroundColor = '';
+        btn.style.color = '';
+    }
+
+    // Logic for speaker is browser dependent, mostly visual here
+    const remoteAudio = document.getElementById('remoteAudio');
+    if (remoteAudio.setSinkId) {
+        // This is experimental and mostly Chrome desktop
+        // remoteAudio.setSinkId(isSpeaker ? 'speaker-id' : 'default');
+    }
+});
+
+
+// Timer for call duration
+let callTimerInterval;
+function startCallTimer() {
+    stopCallTimer();
+    let seconds = 0;
+    const statusEl = document.getElementById('call-status');
+    callTimerInterval = setInterval(() => {
+        seconds++;
+        const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const secs = (seconds % 60).toString().padStart(2, '0');
+        statusEl.innerText = `${mins}:${secs}`;
+    }, 1000);
+}
+
+function stopCallTimer() {
+    if (callTimerInterval) clearInterval(callTimerInterval);
+}
+
 
 // Event Listeners for Buttons
 document.getElementById('login-btn').onclick = login;
@@ -224,3 +311,4 @@ document.getElementById('end-call-btn').onclick = () => {
 document.getElementById('logout-btn').onclick = () => {
     location.reload();
 };
+

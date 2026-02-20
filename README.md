@@ -42,21 +42,11 @@ JustCall is a production-ready Progressive Web Application that allows users to 
 - Service worker handles offline caching of static assets.
 - Integrated WebRTC handles secure P2P audio transmission.
 
-### 🌐 3. Hosting on GitHub Pages (Frontend)
-Since your `API_URL` is already pointing to Render, you can host the UI on GitHub Pages for free:
-1. Go to your GitHub repository -> **Settings**.
-2. Click on **Pages** in the left sidebar.
-3. Under **Build and deployment** > **Branch**, select `main`.
-4. Change the folder from `/ (root)` to `/frontend`.
-5. Click **Save**.
-6. Your site will be live at `https://ShabariES.github.io/Justcall/`.
-
 ## 📱 Features
 - **Registration/Login:** Securely handle user identity based on Roll Number.
 - **Real-time Status:** Users show as online/offline based on socket connection.
 - **Voice Calls:** Peer-to-peer audio calls with ringtones and intuitive UI.
 - **Responsive Design:** Works seamlessly on mobile, tablet, and desktop.
-- **Install Button**: Modern PWA install button for mobile users.
 
 ## ⚠️ Notes
 - Ensure you serve the frontend over `https` (or `localhost` for development) to grant microphone permissions.
